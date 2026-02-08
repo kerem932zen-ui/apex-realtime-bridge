@@ -138,13 +138,13 @@ pool.connect((err, client) => {
                     // Send to user-specific channel (Personal Notification)
                     const notifUserId = data.user_id;
                     if (notifUserId) {
-                        sendToPieSocket(`user-${notifUserId}`, 'new_notification', rawData);
+                        sendToPieSocket(`user-${notifUserId}`, 'new_notification', data);
                     }
                     break;
 
                 case 'announcements':
                     // Broadcast to GLOBAL ANNOUNCEMENTS channel
-                    sendToPieSocket('global-announcements', 'new_announcement', rawData);
+                    sendToPieSocket('global-announcements', 'new_announcement', data);
                     break;
             }
         } catch (error) {
