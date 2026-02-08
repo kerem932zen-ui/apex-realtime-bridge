@@ -1,0 +1,148 @@
+const { Pool } = require('pg');
+const WebSocket = require('ws');
+require('dotenv').config();
+
+const pool = new Pool({
+    connectionString: process.env.SUPABASE_DB_URL
+});
+
+const PIESOCKET_API_KEY = process.env.PIESOCKET_API_KEY;
+const PIESOCKET_CLUSTER_ID = process.env.PIESOCKET_CLUSTER_ID;
+
+console.log('🚀 PieSocket Bridge Server Starting (WebSocket Mode)...');
+console.log('🔑 PieSocket Cluster:', PIESOCKET_CLUSTER_ID);
+
+// WebSocket ile Mesaj Gönder (HTTP API 405 veriyorsa bu çalışır!)
+function sendToPieSocket(roomId, event, data) {
+    // 1. WebSocket URL'i oluştur (Flutter tarafı 'room-' prefix'i kullanıyor!)
+    const wsUrl = `wss://${PIESOCKET_CLUSTER_ID}.piesocket.com/v3/room-${roomId}?api_key=${PIESOCKET_API_KEY}&notify_self=0`;
+
+    // 2. Bağlan
+    const ws = new WebSocket(wsUrl);
+
+    ws.on('open', function open() {
+        console.log(`🔌 Connected to [${roomId}]`);
+
+        // 3. Mesajı hazırla (client- prefix'i önemli olabilir)
+        const finalEvent = event.startsWith('client-') ? event : `client-${event}`;
+
+        const payload = JSON.stringify({
+            event: finalEvent,
+            data: data
+        });
+
+        // 4. Gönder
+        ws.send(payload);
+        console.log(`✅ Sent to [${roomId}]: ${finalEvent}`);
+
+        // 5. Biraz bekleyip kapat (mesajın gitmesi için)
+        setTimeout(() => {
+            ws.close();
+            // console.log(`🔌 Disconnected from [${roomId}]`);
+        }, 1000); // 1 saniye bekle
+    });
+
+    ws.on('error', function error(err) {
+        console.error(`❌ WS Error [${roomId}]:`, err.message);
+    });
+}
+
+// PostgreSQL LISTEN
+pool.connect((err, client) => {
+    if (err) {
+        console.error('❌ PostgreSQL connection error:', err);
+        process.exit(1);
+    }
+
+    console.log('✅ Connected to PostgreSQL');
+
+    const channels = [
+        'rooms',
+        'room_participants',
+        'post_likes',
+        'post_comments',
+        'user_levels',
+        'user_coins', // En önemlisi bu!
+        'profiles'
+    ];
+
+    channels.forEach(channel => {
+        client.query(`LISTEN ${channel}`);
+        console.log(`🎧 Listening to ${channel}`);
+    });
+
+    client.on('notification', (msg) => {
+        try {
+            const data = JSON.parse(msg.payload);
+            console.log(`📢 ${msg.channel}:`, JSON.stringify(data).substring(0, 100));
+
+            switch (msg.channel) {
+                case 'rooms':
+                    // Broadcast to global rooms channel
+                    sendToPieSocket('global-rooms', 'room-updated', data);
+                    break;
+
+                case 'room_participants':
+                    // Broadcast to global rooms channel
+                    sendToPieSocket('global-rooms', 'participant-updated', data);
+                    break;
+
+                case 'post_likes':
+                    // Broadcast to global posts channel
+                    sendToPieSocket('global-posts', 'post-like-updated', data);
+                    break;
+
+                case 'post_comments':
+                    // Broadcast to global posts channel
+                    sendToPieSocket('global-posts', 'post-comment-updated', data);
+                    break;
+
+                case 'user_levels':
+                    // Send to user-specific channel
+                    const levelUserId = data.user_id;
+                    if (levelUserId) {
+                        sendToPieSocket(`user-${levelUserId}`, 'level-updated', data);
+                    }
+                    break;
+
+                case 'user_coins':
+                    // Send to user-specific channel
+                    const coinUserId = data.user_id;
+                    if (coinUserId) {
+                        sendToPieSocket(`user-${coinUserId}`, 'coin-updated', data);
+                    }
+                    break;
+
+                case 'profiles':
+                    // Send to user-specific channel
+                    const profileUserId = data.user_id;
+                    if (profileUserId) {
+                        sendToPieSocket(`user-${profileUserId}`, 'profile-updated', data);
+                    }
+                    break;
+            }
+        } catch (error) {
+            console.error('❌ Notification parse error:', error);
+        }
+    });
+
+    client.on('error', (err) => {
+        console.error('❌ PostgreSQL client error:', err);
+    });
+});
+
+// Health check endpoint (optional - simple HTTP server)
+const express = require('express');
+const app = express();
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString()
+    });
+});
+
+const PORT = process.env.PORT || 3002;
+app.listen(PORT, () => {
+    console.log(`🏥 Health endpoint: http://localhost:${PORT}/health`);
+});
