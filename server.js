@@ -63,7 +63,9 @@ pool.connect((err, client) => {
         'post_comments',
         'user_levels',
         'user_coins', // En önemlisi bu!
-        'profiles'
+        'profiles',
+        'notifications', // YENİ: Bildirimler
+        'announcements'  // YENİ: Duyurular
     ];
 
     channels.forEach(channel => {
@@ -73,35 +75,38 @@ pool.connect((err, client) => {
 
     client.on('notification', (msg) => {
         try {
-            const data = JSON.parse(msg.payload);
-            console.log(`📢 ${msg.channel}:`, JSON.stringify(data).substring(0, 100));
+            const rawData = JSON.parse(msg.payload);
+            console.log(`📢 ${msg.channel}:`, JSON.stringify(rawData).substring(0, 100));
+
+            // Support both V1 (row) and V2 ({event_type, data}) formats
+            const data = rawData.data || rawData;
 
             switch (msg.channel) {
                 case 'rooms':
                     // Broadcast to global rooms channel
-                    sendToPieSocket('global-rooms', 'room-updated', data);
+                    sendToPieSocket('global-rooms', 'room-updated', rawData);
                     break;
 
                 case 'room_participants':
                     // Broadcast to global rooms channel
-                    sendToPieSocket('global-rooms', 'participant-updated', data);
+                    sendToPieSocket('global-rooms', 'participant-updated', rawData);
                     break;
 
                 case 'post_likes':
                     // Broadcast to global posts channel
-                    sendToPieSocket('global-posts', 'post-like-updated', data);
+                    sendToPieSocket('global-posts', 'post-like-updated', rawData);
                     break;
 
                 case 'post_comments':
                     // Broadcast to global posts channel
-                    sendToPieSocket('global-posts', 'post-comment-updated', data);
+                    sendToPieSocket('global-posts', 'post-comment-updated', rawData);
                     break;
 
                 case 'user_levels':
                     // Send to user-specific channel
                     const levelUserId = data.user_id;
                     if (levelUserId) {
-                        sendToPieSocket(`user-${levelUserId}`, 'level-updated', data);
+                        sendToPieSocket(`user-${levelUserId}`, 'level-updated', rawData);
                     }
                     break;
 
@@ -109,16 +114,37 @@ pool.connect((err, client) => {
                     // Send to user-specific channel
                     const coinUserId = data.user_id;
                     if (coinUserId) {
-                        sendToPieSocket(`user-${coinUserId}`, 'coin-updated', data);
+                        sendToPieSocket(`user-${coinUserId}`, 'coin-updated', rawData);
                     }
                     break;
 
                 case 'profiles':
                     // Send to user-specific channel
-                    const profileUserId = data.user_id;
+                    const profileUserId = data.id || data.user_id;
                     if (profileUserId) {
-                        sendToPieSocket(`user-${profileUserId}`, 'profile-updated', data);
+                        sendToPieSocket(`user-${profileUserId}`, 'profile-updated', rawData);
+
+                        // Also broadcast to global rooms (public avatar update)
+                        sendToPieSocket('global-rooms', 'profile_update', {
+                            user_id: profileUserId,
+                            avatar_url: data.avatar_url,
+                            full_name: data.full_name,
+                            bio: data.bio
+                        });
                     }
+                    break;
+
+                case 'notifications':
+                    // Send to user-specific channel (Personal Notification)
+                    const notifUserId = data.user_id;
+                    if (notifUserId) {
+                        sendToPieSocket(`user-${notifUserId}`, 'new_notification', rawData);
+                    }
+                    break;
+
+                case 'announcements':
+                    // Broadcast to GLOBAL ANNOUNCEMENTS channel
+                    sendToPieSocket('global-announcements', 'new_announcement', rawData);
                     break;
             }
         } catch (error) {
