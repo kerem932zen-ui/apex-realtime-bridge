@@ -65,7 +65,8 @@ pool.connect((err, client) => {
         'user_coins', // En önemlisi bu!
         'profiles',
         'notifications', // YENİ: Bildirimler
-        'announcements'  // YENİ: Duyurular
+        'announcements',  // YENİ: Duyurular
+        'new_chat_message' // YENİ: Özel Mesajlar (DM)
     ];
 
     channels.forEach(channel => {
@@ -145,6 +146,18 @@ pool.connect((err, client) => {
                 case 'announcements':
                     // Broadcast to GLOBAL ANNOUNCEMENTS channel
                     sendToPieSocket('global-announcements', 'new_announcement', data);
+                    break;
+
+                case 'new_chat_message':
+                    // ✨ DM Mesajı: Alıcıya gönder (Sohbet ekranında görünsün)
+                    // Kanal: user-{receiver_id}
+                    if (data.receiver_id) {
+                        sendToPieSocket(`user-${data.receiver_id}`, 'chat_message', data);
+                    }
+                    // Gönderene de yolla (Senkronizasyon/Garantili Teslimat İçin)
+                    if (data.sender_id) {
+                        sendToPieSocket(`user-${data.sender_id}`, 'chat_message_sent', data);
+                    }
                     break;
             }
         } catch (error) {
