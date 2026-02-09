@@ -133,6 +133,12 @@ pool.connect((err, client) => {
                             bio: data.bio
                         });
                     }
+
+                    // NEW: Broadcast to global-avatars if this is a NEW USER (INSERT)
+                    if (rawData.type === 'INSERT') {
+                        console.log('👶 NEW USER REGISTRATION DETECTED:', profileUserId);
+                        sendToPieSocket('global-avatars', 'new-user-joined', data);
+                    }
                     break;
 
                 case 'notifications':
