@@ -176,18 +176,20 @@ pool.connect((err, client) => {
     });
 });
 
-// Health check endpoint (optional - simple HTTP server)
-const express = require('express');
-const app = express();
+// Health check endpoint (Simple HTTP server for Render)
+const http = require('http');
 
-app.get('/health', (req, res) => {
-    res.json({
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
         status: 'ok',
-        timestamp: new Date().toISOString()
-    });
+        timestamp: new Date().toISOString(),
+        service: 'Apex Realtime Bridge'
+    }));
 });
 
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {
-    console.log(`🏥 Health endpoint: http://localhost:${PORT}/health`);
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log(`🏥 Health Check Server running on port ${PORT}`);
 });
