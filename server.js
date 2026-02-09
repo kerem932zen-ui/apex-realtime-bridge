@@ -134,10 +134,10 @@ pool.connect((err, client) => {
                         });
                     }
 
-                    // NEW: Broadcast to global-avatars if this is a NEW USER (INSERT)
+                    // NEW: Broadcast to global-rooms if this is a NEW USER (INSERT)
                     if (rawData.type === 'INSERT') {
                         console.log('👶 NEW USER REGISTRATION DETECTED:', profileUserId);
-                        sendToPieSocket('global-avatars', 'new-user-joined', data);
+                        sendToPieSocket('global-rooms', 'new-user-joined', data);
                     }
                     break;
 
