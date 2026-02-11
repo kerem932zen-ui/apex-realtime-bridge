@@ -176,20 +176,82 @@ pool.connect((err, client) => {
     });
 });
 
-// Health check endpoint (Simple HTTP server for Render)
-const http = require('http');
+// Health check endpoint + API (Express ile)
+const express = require('express');
+const app = express();
 
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
+// Middleware
+app.use(express.json());
+
+// CORS for Flutter
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
+// Health Check
+app.get('/', (req, res) => {
+    res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         service: 'Apex Realtime Bridge'
-    }));
+    });
 });
 
+// =====================================================
+// CLAN EVENT HANDLER
+// =====================================================
+app.post('/api/clan-event', (req, res) => {
+    try {
+        const { eventType, clanId, data } = req.body;
+
+        if (!eventType || !data) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing eventType or data'
+            });
+        }
+
+        console.log(`🏰 Clan Event: ${eventType} for clan: ${clanId}`);
+
+        // Global clan channel'a gönder (tüm kullanıcılar için)
+        sendToPieSocket('clan-global', eventType, {
+            type: eventType,
+            clanId,
+            data,
+            timestamp: Date.now()
+        });
+
+        // Spesifik clan channel'a gönder (o aile üyeleri için)
+        if (clanId) {
+            sendToPieSocket(`clan-${clanId}`, eventType, {
+                type: eventType,
+                data,
+                timestamp: Date.now()
+            });
+        }
+
+        res.json({ success: true, eventType, clanId });
+    } catch (error) {
+        console.error('❌ Clan event error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// =====================================================
+// START SERVER
+// =====================================================
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, () => {
-    console.log(`🏥 Health Check Server running on port ${PORT}`);
+app.listen(PORT, () => {
+    console.log(`🏥 HTTP Server running on port ${PORT}`);
+    console.log(`📡 Clan events: POST /api/clan-event`);
 });
