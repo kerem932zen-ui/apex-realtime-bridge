@@ -66,7 +66,10 @@ pool.connect((err, client) => {
         'profiles',
         'notifications', // YENİ: Bildirimler
         'announcements',  // YENİ: Duyurular
-        'new_chat_message' // YENİ: Özel Mesajlar (DM)
+        'new_chat_message', // YENİ: Özel Mesajlar (DM)
+        'clans',
+        'clan_members',
+        'clan_join_requests'
     ];
 
     channels.forEach(channel => {
@@ -83,6 +86,44 @@ pool.connect((err, client) => {
             const data = rawData.data || rawData;
 
             switch (msg.channel) {
+                case 'clans':
+                    // Clan update or create
+                    sendToPieSocket('clan-global', rawData.type === 'INSERT' ? 'clan-created' : 'clan-info-updated', {
+                        clanId: data.id,
+                        data: data
+                    });
+                    if (data.id) {
+                        sendToPieSocket(`clan-${data.id}`, 'clan-updated', { data });
+                    }
+                    break;
+
+                case 'clan_members':
+                    // Member added/removed/updated
+                    if (data.clan_id) {
+                        let event = 'clan-member-updated'; // Default
+                        if (rawData.type === 'INSERT') event = 'clan-member-added';
+                        else if (rawData.type === 'DELETE') event = 'clan-member-removed';
+                        else if (rawData.type === 'UPDATE') event = 'clan-role-changed'; // Usually role update
+
+                        sendToPieSocket(`clan-${data.clan_id}`, event, {
+                            data: data,
+                            userId: data.user_id,
+                            newRole: data.role
+                        });
+                    }
+                    break;
+
+                case 'clan_join_requests':
+                    if (data.clan_id) {
+                        let event = 'clan-join-request-updated';
+                        if (rawData.type === 'INSERT') event = 'clan-join-request';
+
+                        sendToPieSocket(`clan-${data.clan_id}`, event, {
+                            data: data
+                        });
+                    }
+                    break;
+
                 case 'rooms':
                     // Broadcast to global rooms channel
                     sendToPieSocket('global-rooms', 'room-updated', rawData);
